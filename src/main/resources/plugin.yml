@@ -2,3 +2,13 @@ name: enchantment_unlimit
 version: '1.0-beta'
 main: io.github.freecad1211.enchantment_unlimit.Enchantment_unlimit
 api-version: '1.21'
+commands:
+  enchantment_unlimit:
+    description: Enchantment_unlimit 플러그인 명령어
+    aliases: [eu]
+    permission: enchantment_unlimit.admin
+    usage: /<command> [reload]
+permissions:
+  enchantment_unlimit.admin:
+    description: Enchantment_unlimit 플러그인 관리자 권한
+    default: op
