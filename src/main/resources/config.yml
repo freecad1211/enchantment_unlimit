@@ -1,0 +1,11 @@
+# 인챈트별 최대 레벨을 설정합니다.
+# 인챈트 이름은 마인크래프트 내부 식별자를 사용해야 합니다.
+# 예시: sharpess, protection 등
+# 기본 마인크래프트 레벨 제한을 사용하려면 해당 라인을 삭제하거나 주석 처리하세요.
+
+max-levels:
+
+  sharpness: 10 #날카로움
+  protection: 6 # 보호
+  #unbreaking: 5 # 인내 인챈트의 최대 레벨을 5로 설정
+  #Aqua_Affinity:
