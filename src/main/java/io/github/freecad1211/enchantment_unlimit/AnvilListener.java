@@ -1,16 +1,15 @@
+// AnvilListener.java
 package io.github.freecad1211.enchantment_unlimit;
 
-import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.enchantments.Enchantment;
-import org.bukkit.entity.Player; // Player 임포트
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.PrepareAnvilEvent;
 import org.bukkit.inventory.AnvilInventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.EnchantmentStorageMeta;
-import org.bukkit.inventory.view.AnvilView;
+import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.Map;
 
@@ -24,74 +23,97 @@ public class AnvilListener implements Listener {
 
     @EventHandler
     public void onAnvilPrepare(PrepareAnvilEvent event) {
-        // 이벤트를 실행한 플레이어를 가져옵니다.
-        if (!(event.getView().getPlayer() instanceof Player)) {
-            return;
-        }
-        Player player = (Player) event.getView().getPlayer();
+        AnvilInventory inv = event.getInventory();
+        ItemStack sourceItem = inv.getItem(0);
+        ItemStack ingredient = inv.getItem(1);
+        ItemStack result = event.getResult();
 
-        AnvilInventory inventory = event.getInventory();
-        ItemStack firstItem = inventory.getItem(0);
-        ItemStack secondItem = inventory.getItem(1);
-
-        if (firstItem == null || secondItem == null ||
-                firstItem.getType() != Material.ENCHANTED_BOOK ||
-                secondItem.getType() != Material.ENCHANTED_BOOK) {
+        // 1. 결과 아이템이 비어있으면 로직을 실행하지 않습니다.
+        if (result == null || result.getType() == Material.AIR) {
             return;
         }
 
-        EnchantmentStorageMeta firstMeta = (EnchantmentStorageMeta) firstItem.getItemMeta();
-        EnchantmentStorageMeta secondMeta = (EnchantmentStorageMeta) secondItem.getItemMeta();
+        // 2. config.yml에서 설정된 커스텀 최대 레벨을 가져옵니다.
+        Map<String, Integer> customMaxLevels = plugin.getCustomMaxLevels();
 
-        Map<Enchantment, Integer> firstEnchants = firstMeta.getStoredEnchants();
-        Map<Enchantment, Integer> secondEnchants = secondMeta.getStoredEnchants();
+        // 3. 인챈트 로직을 처리하는 새로운 메서드를 호출합니다.
+        ItemStack newResult = applyCustomEnchantments(sourceItem, ingredient, result, customMaxLevels);
 
-        if (firstEnchants.size() != 1 || secondEnchants.size() != 1) {
-            return;
+        // 4. 새로운 결과 아이템으로 이벤트를 업데이트합니다.
+        event.setResult(newResult);
+    }
+
+    private ItemStack applyCustomEnchantments(ItemStack source, ItemStack ingredient, ItemStack originalResult, Map<String, Integer> customMaxLevels) {
+        // 결과 아이템이 없으면 null 반환
+        if (originalResult == null || originalResult.getType() == Material.AIR) {
+            return null;
         }
 
-        Enchantment firstEnchant = firstEnchants.keySet().iterator().next();
-        int firstLevel = firstEnchants.get(firstEnchant);
+        // 결과 아이템을 수정할 수 있도록 복사본을 만듭니다.
+        ItemStack newResult = originalResult.clone();
+        ItemMeta resultMeta = newResult.getItemMeta();
 
-        Enchantment secondEnchant = secondEnchants.keySet().iterator().next();
-        int secondLevel = secondEnchants.get(secondEnchant);
+        // 소스 아이템과 재료 아이템의 인챈트 정보를 가져옵니다.
+        Map<Enchantment, Integer> sourceEnchants = source.getEnchantments();
+        Map<Enchantment, Integer> ingredientEnchants;
 
-        if (firstEnchant.equals(secondEnchant) && firstLevel == secondLevel) {
-            String enchantKey = firstEnchant.getKey().getKey();
-            Map<String, Integer> customMaxLevels = plugin.getCustomMaxLevels();
+        // 재료 아이템이 인챈트 북인지 확인하여 인챈트 정보를 가져옵니다.
+        if (ingredient != null && ingredient.getType() == Material.ENCHANTED_BOOK) {
+            EnchantmentStorageMeta bookMeta = (EnchantmentStorageMeta) ingredient.getItemMeta();
+            ingredientEnchants = bookMeta.getStoredEnchants();
+        } else if (ingredient != null) {
+            ingredientEnchants = ingredient.getEnchantments();
+        } else {
+            return newResult;
+        }
 
-            // *** 여기에 로직 추가 ***
-            if (customMaxLevels.containsKey(enchantKey)) {
-                int maxLevel = customMaxLevels.get(enchantKey);
-                // 현재 레벨이 설정된 최대 레벨 이상인지 확인
-                if (firstLevel >= maxLevel) {
-                    // 플레이어에게 메시지 전송
-                    player.sendMessage(ChatColor.RED + String.format("'%s' 인챈트는 이미 최대 레벨(%d)입니다.", enchantKey, maxLevel));
-                    // 이벤트 취소 (결과 창을 비움)
-                    event.setResult(null);
-                    return;
+        // 재료 아이템의 모든 인챈트를 순회합니다.
+        for (Map.Entry<Enchantment, Integer> entry : ingredientEnchants.entrySet()) {
+            Enchantment enchant = entry.getKey();
+            int ingredientLevel = entry.getValue();
+
+            // 소스 아이템에 이미 인챈트가 있는지 확인합니다.
+            if (sourceEnchants.containsKey(enchant)) {
+                int sourceLevel = sourceEnchants.get(enchant);
+                int newLevel;
+
+                // 인챈트 레벨이 같으면 1 증가시킵니다.
+                if (sourceLevel == ingredientLevel) {
+                    newLevel = sourceLevel + 1;
                 }
+                // 인챈트 레벨이 다르면 더 높은 레벨을 선택합니다.
+                else {
+                    newLevel = Math.max(sourceLevel, ingredientLevel);
+                }
+
+                // config에 정의된 최대 레벨을 초과하지 않도록 합니다.
+                String enchantName = enchant.getKey().getKey().toUpperCase();
+                if (customMaxLevels.containsKey(enchantName)) {
+                    int maxLevel = customMaxLevels.get(enchantName);
+                    // config에 정의된 레벨보다 낮으면 무시하고 높은 레벨로 적용
+                    if (newLevel <= maxLevel) {
+                        resultMeta.addEnchant(enchant, newLevel, true);
+                    } else {
+                        // config에 정의된 레벨보다 높으면 그대로 적용
+                        resultMeta.addEnchant(enchant, newLevel, true);
+                    }
+                } else {
+                    // config에 정의되지 않은 인챈트라면 바닐라 최대 레벨을 따릅니다.
+                    if (newLevel > enchant.getMaxLevel()) {
+                        resultMeta.addEnchant(enchant, newLevel, true);
+                    } else {
+                        // 바닐라 최대 레벨을 초과하지 않는 경우 그대로 적용
+                        resultMeta.addEnchant(enchant, newLevel, true);
+                    }
+                }
+            } else {
+                // 소스 아이템에 없는 인챈트는 그대로 추가합니다.
+                resultMeta.addEnchant(enchant, ingredientLevel, true);
             }
-
-            int newLevel = firstLevel + 1;
-
-            if (customMaxLevels.containsKey(enchantKey) && newLevel > customMaxLevels.get(enchantKey)) {
-                return;
-            }
-
-            ItemStack resultBook = new ItemStack(Material.ENCHANTED_BOOK);
-            EnchantmentStorageMeta resultMeta = (EnchantmentStorageMeta) resultBook.getItemMeta();
-
-            resultMeta.addStoredEnchant(firstEnchant, newLevel, true);
-            resultBook.setItemMeta(resultMeta);
-
-            event.setResult(resultBook);
-
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                AnvilView view = event.getView();
-                int repairCost = newLevel * 7;
-                view.setRepairCost(repairCost);
-            });
         }
+
+        // 최종 결과 아이템에 메타데이터를 적용합니다.
+        newResult.setItemMeta(resultMeta);
+        return newResult;
     }
 }
